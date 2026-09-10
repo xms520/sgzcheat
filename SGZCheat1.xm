@@ -367,18 +367,17 @@ static void hooked_renderScene(id self, SEL _cmd, id link) {
 // SpriteKit 变速：scene.speed 是官方 API（1.0=正常）
 // 巡检 keyWindow 里所有 SKView 的 scene（SwiftUI SpriteView 包装）
 static UIWindow *fg_keyWindow(void);   // 前向声明（定义在文件后面）
-static void SGZApplySpeed(void) {
+static void SGZWalkViews(UIView *v, NSMutableArray *out) {
+    if (!v) return;
+    if ([v isKindOfClass:NSClassFromString(@"SKView")]) [out addObject:v];
+    for (UIView *sub in v.subviews) SGZWalkViews(sub, out);
+}
+static void SGZApplySpeedImpl(void) {
     if (g_speedMult == 1.0f) return;
     UIWindow *kw = fg_keyWindow();
     if (!kw) return;
-    // 递归找 SKView
-    void (^find)(UIView *) = ^(UIView *v) { };
     NSMutableArray *found = [NSMutableArray array];
-    void (^rec)(UIView *) = ^(UIView *v) {
-        if ([v isKindOfClass:NSClassFromString(@"SKView")]) [found addObject:v];
-        for (UIView *sub in v.subviews) rec(sub);
-    };
-    rec(kw);
+    SGZWalkViews(kw, found);
     for (UIView *v in found) {
         id scene = [v valueForKey:@"scene"];
         if (scene) {
@@ -387,6 +386,11 @@ static void SGZApplySpeed(void) {
             if (!logged) { VGLog("[speed] scene.speed=%.1f", g_speedMult); logged = YES; }
         }
     }
+}
+static void SGZApplySpeed(void) {
+    // 防连续调用/防野指针
+    if (g_speedMult == 1.0f) return;
+    SGZApplySpeedImpl();
 }
 
 static void VGTryInstallRenderHook(void) {
@@ -660,15 +664,17 @@ __attribute__((constructor)) static void vg_ctor() {
     @autoreleasepool {
         VGLog("[init] SGZCheat v1 loaded (合兵定三国)");
 
-        __block int tries = 0;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            void (^tick)(void) = ^{
+        // ⚠️ ctor 里嵌套递归 block dispatch_after 自身 = SIGTRAP NULL block（IPS 实锤）
+        // 根修：递归改循环。后台线程 sleep+试，主线程无需参与
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
+            for (int i = 0; i < 30; i++) {
                 Class c = NSClassFromString(@"ViewController");
-                if (c) { VGTryInstallRenderHook(); return; }
-                if (++tries < 30) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC),
-                                                  dispatch_get_main_queue(), tick);
-            };
-            tick();
+                if (c) {
+                    dispatch_async(dispatch_get_main_queue(), ^{ VGTryInstallRenderHook(); });
+                    return;
+                }
+                [NSThread sleepForTimeInterval:1.0];
+            }
         });
 
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
