@@ -1,0 +1,44 @@
+name: Build SGZCheat
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build with clang
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          CC=$(xcrun --sdk iphoneos --find clang)
+          echo "SDK: $SDK"
+          
+          cp SGZCheat1.xm SGZCheat1.m
+          
+          $CC -arch arm64 \
+            -isysroot "$SDK" \
+            -miphoneos-version-min=15.0 \
+            -fobjc-arc \
+            -framework Foundation \
+            -framework UIKit \
+            -framework CoreGraphics \
+            -framework QuartzCore \
+            -framework SpriteKit \
+            -dynamiclib \
+            -install_name @executable_path/SGZCheat1.dylib \
+            -o SGZCheat1.dylib \
+            SGZCheat1.m
+          
+          brew install ldid
+          ldid -S SGZCheat1.dylib
+          
+          file SGZCheat1.dylib
+          ls -la SGZCheat1.dylib
+          
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: SGZCheat1.dylib
+          path: SGZCheat1.dylib
