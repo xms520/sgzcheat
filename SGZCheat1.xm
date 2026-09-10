@@ -366,6 +366,7 @@ static void hooked_renderScene(id self, SEL _cmd, id link) {
 
 // SpriteKit 变速：scene.speed 是官方 API（1.0=正常）
 // 巡检 keyWindow 里所有 SKView 的 scene（SwiftUI SpriteView 包装）
+static UIWindow *fg_keyWindow(void);   // 前向声明（定义在文件后面）
 static void SGZApplySpeed(void) {
     if (g_speedMult == 1.0f) return;
     UIWindow *kw = fg_keyWindow();
